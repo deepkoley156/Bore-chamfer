@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VMC Bore Chamfer CNC Pro</title>
+<style>
+:root{--bg:#f5f5f5;--card:#fff;--line:#e3e3e3;--ink:#161616;--mute:#7a7a7a}
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+body{background:var(--bg);color:var(--ink);min-height:100vh;padding:20px;display:flex;justify-content:center;align-items:flex-start}
+.container{width:100%;max-width:560px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px}
+h1{font-size:1.1rem;font-weight:600;letter-spacing:.2px}
+.sub{font-size:.8rem;color:var(--mute);margin:3px 0 20px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+label{display:block;font-size:.75rem;margin-bottom:5px;color:var(--mute)}
+input[type=number]{width:100%;padding:11px 12px;background:#fff;border:1px solid var(--line);border-radius:8px;font-size:1rem;color:var(--ink)}
+input[type=number]:focus{outline:none;border-color:var(--ink)}
+.btn{width:100%;margin-top:16px;padding:13px;background:var(--ink);color:#fff;border:none;border-radius:8px;font-size:.95rem;font-weight:600;cursor:pointer}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+#errorMsg{display:none;margin-top:12px;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:.8rem;text-align:center}
+#loaderArea{display:none;flex-direction:column;align-items:center;padding:26px 0 6px}
+.spinner{width:32px;height:32px;border:3px solid var(--line);border-top-color:var(--ink);border-radius:50%;animation:spin 1s linear infinite;margin-bottom:12px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lt{font-size:.85rem;color:var(--mute)}
+#resultsArea{display:none;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tab-btn{flex:1;padding:9px;background:none;border:1px solid var(--line);border-radius:8px;font-weight:600;font-size:.85rem;cursor:pointer;color:var(--mute)}
+.tab-btn.active{background:var(--ink);border-color:var(--ink);color:#fff}
+canvas{display:block;width:100%;height:auto;background:#f7f7f7;border:1px solid var(--line);border-radius:8px;margin-bottom:8px}
+.dro{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px}
+.dro div{border:1px solid var(--line);border-radius:8px;padding:6px 9px;color:var(--mute);font-size:.62rem;text-transform:uppercase;letter-spacing:.4px}
+.dro b{display:block;color:var(--ink);font:600 .95rem 'Courier New',monospace;text-transform:none;margin-top:1px;letter-spacing:0}
+.blk{border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:.78rem 'Courier New',monospace;margin-bottom:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+input[type=range]{width:100%;accent-color:#161616;height:18px;margin:2px 0}
+.tm{display:flex;justify-content:space-between;color:var(--mute);font-size:.72rem;margin:2px 0 10px}
+.ctrl{display:flex;gap:6px}
+.ctrl button,.cp{flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-weight:600;font-size:.8rem;cursor:pointer}
+.ctrl .main,.ctrl .on{background:var(--ink);border-color:var(--ink);color:#fff}
+.ctrl .main{flex:2}
+.ph{display:flex;justify-content:space-between;align-items:center;margin:0 0 6px;font-size:.8rem;font-weight:600}
+.cp{flex:none;padding:5px 12px}
+.note{font-size:.75rem;color:var(--mute);margin-bottom:12px;line-height:1.5}
+.code-box{background:#fafafa;border:1px solid var(--line);border-radius:8px;padding:8px 0;font:.8rem 'Courier New',monospace;overflow:auto;max-height:380px;position:relative}
+.ln{padding:1px 12px;white-space:pre}
+.ln.on{background:var(--ink);color:#fff}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>VMC Bore Chamfer Generator</h1>
+  <p class="sub">Corner-radius endmill, spiral toolpath, G-code and live simulation</p>
+
+  <div class="grid">
+    <div><label>Center X (opt)</label><input type="number" id="cx" step="0.1" placeholder="0"></div>
+    <div><label>Center Y (opt)</label><input type="number" id="cy" step="0.1" placeholder="0"></div>
+    <div><label>Bore Dia *</label><input type="number" id="bore" step="0.01" min="0.1" placeholder="e.g. 25"></div>
+    <div><label>Tool Dia *</label><input type="number" id="toolDia" step="0.1" min="0.1" placeholder="e.g. 6"></div>
+    <div><label>Tool Tip Radius * (corner R)</label><input type="number" id="tipR" step="0.05" min="0.01" placeholder="e.g. 0.5"></div>
+    <div><label>Chamfer Depth *</label><input type="number" id="depth" step="0.1" min="0.01" placeholder="e.g. 0.5"></div>
+    <div><label>Angle (default 45)</label><input type="number" id="angle" step="1" min="1" max="89" placeholder="45"></div>
+    <div><label>Feed Rate *</label><input type="number" id="feed" step="10" min="10" placeholder="e.g. 300"></div>
+    <div class="full"><label>Depth of Cut per Revolution (default 0.1) - Z spirals down while circling</label><input type="number" id="doc" step="0.01" min="0.001" placeholder="e.g. 0.05"></div>
+  </div>
+
+  <div id="errorMsg"></div>
+  <button id="generateBtn" class="btn" onclick="handleGenerate()">Generate G-Code</button>
+
+  <div id="loaderArea"><div class="spinner"></div><div class="lt">Generating toolpath...</div></div>
+
+  <div id="resultsArea">
+    <div class="tabs">
+      <button class="tab-btn active" id="tb-sim" onclick="switchTab('sim')">Simulation</button>
+      <button class="tab-btn" id="tb-code" onclick="switchTab('code')">G-Code</button>
+    </div>
+
+    <div id="tab-sim">
+      <canvas id="topCanvas" width="440" height="440"></canvas>
+      <canvas id="sideCanvas" width="440" height="230"></canvas>
+      <div class="dro">
+        <div>X<b id="dX">0.000</b></div><div>Y<b id="dY">0.000</b></div><div>Z (tip)<b id="dZ">0.000</b></div>
+        <div>Mode<b id="dMode">-</b></div><div>Orbit R<b id="dOrb">0.000</b></div><div>Feed<b id="dF">0</b></div>
+        <div>Program<b id="dProg">O1000</b></div><div>Move<b id="dMove">0/0</b></div><div>Spindle<b id="dS">0</b></div>
+      </div>
+      <div class="blk" id="curBlock">-</div>
+      <input type="range" id="seek" min="0" max="1000" value="0" oninput="seekTo(this.value)">
+      <div class="tm"><span id="tNow">00:00</span><span id="tPct">0%</span><span id="tTot">00:00</span></div>
+      <div class="ctrl">
+        <button class="main" id="btnPlay" onclick="togglePlay()">Pause</button>
+        <button onclick="restartSim()">Restart</button>
+        <button onclick="endSim()">End</button>
+      </div>
+      <div class="ctrl" style="margin-top:6px" id="speeds">
+        <button data-s="1" onclick="setSpeed(this)">1x</button>
+        <button data-s="2" onclick="setSpeed(this)">2x</button>
+        <button data-s="5" onclick="setSpeed(this)">5x</button>
+        <button class="on" data-s="10" onclick="setSpeed(this)">10x</button>
+        <button data-s="25" onclick="setSpeed(this)">25x</button>
+      </div>
+    </div>
+
+    <div id="tab-code" style="display:none">
+      <div class="note" id="info"></div>
+      <div class="ph">Main Program (O1000)<button class="cp" onclick="copyCode('main',this)">Copy</button></div>
+      <div class="code-box" id="mainBox"></div>
+      <div class="ph" style="margin-top:14px">Spiral Sub Program (O2000)<button class="cp" onclick="copyCode('sub',this)">Copy</button></div>
+      <div class="code-box" id="subBox"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const f = v => { const t = parseFloat(v).toFixed(3); return t === '-0.000' ? '0.000' : t; };
+const RAPID = 12000, G = 220;
+let S = null, raf = 0;
+
+function showErr(msg) { const e = $('errorMsg'); e.textContent = msg; e.style.display = msg ? 'block' : 'none'; }
+function readInputs() {
+  return { cx: parseFloat($('cx').value) || 0, cy: parseFloat($('cy').value) || 0, bore: +$('bore').value, tool: +$('toolDia').value,
+           rc: +$('tipR').value, depth: +$('depth').value, doc: $('doc').value === '' ? 0.1 : +$('doc').value,
+           ang: $('angle').value === '' ? 45 : +$('angle').value, feed: +$('feed').value };
+}
+
+/* Corner-radius endmill: dia D, corner radius rc. The torus corner touches the chamfer line at the point whose
+   normal is the chamfer normal. Sliding the tool along the line gives a conical spiral:
+     tool-axis orbit radius  rho(zt) = rhoE + (zt - zE) * tan(a)
+     start: contact at the top edge (z = 0), end: contact at the bottom edge (z = -depth, r = R) */
+function geo(p) {
+  const a = p.ang * Math.PI / 180, ta = Math.tan(a), R = p.bore / 2, c = p.depth * ta, k = p.rc * (1 - Math.sin(a));
+  const rhoE = R - p.tool / 2 + p.rc * (1 - Math.cos(a));
+  return { ta, R, c, rhoE, rhoS: rhoE + c, zS: -k, zE: -p.depth - k };
+}
+function check(p) {
+  if ($('tipR').value === '' || !(p.bore > 0 && p.tool > 0 && p.depth > 0 && p.feed > 0)) return 'Please fill in all required fields (*).';
+  if (!(p.ang > 0 && p.ang < 90)) return 'Angle must be between 1 and 89 degrees.';
+  if (!(p.rc > 0)) return 'Tool tip radius must be greater than 0 - use a corner-radius endmill for a smooth chamfer finish.';
+  if (p.rc > p.tool / 2 + 1e-9) return 'Tool tip radius cannot be larger than tool dia / 2.';
+  if (!(p.doc >= 0.001)) return 'Depth of cut must be at least 0.001.';
+  if (Math.ceil(p.depth / Math.min(p.doc, p.depth)) > 2500) return 'Depth of cut is too small: program would be too long.';
+  if (geo(p).rhoE < 0.1) return 'Tool is too big for this bore - it must fit inside the bore.';
+  return '';
+}
+
+function handleGenerate() {
+  const err = check(readInputs());
+  if (err) { showErr(err); return; }
+  showErr('');
+  cancelAnimationFrame(raf); S = null;
+  $('resultsArea').style.display = 'none';
+  const btn = $('generateBtn'); btn.disabled = true; btn.textContent = 'Processing...';
+  $('loaderArea').style.display = 'flex';
+  setTimeout(() => {
+    $('loaderArea').style.display = 'none';
+    btn.disabled = false; btn.textContent = 'Regenerate G-Code';
+    processMathData();
+    $('resultsArea').style.display = 'block';
+    switchTab('sim');
+    $('resultsArea').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, 5000);
+}
+
+/* ---------- G-code + executed motion list ---------- */
+function processMathData() {
+  const p = readInputs(), g = geo(p), { cx, cy, depth, feed } = p, { R, ta, c, rhoE, rhoS, zS, zE } = g;
+  const rpm = Math.floor(feed * 5) || 2500, P2 = Math.PI / 2;
+  const N = Math.max(1, Math.ceil(depth / Math.min(p.doc, depth) - 1e-9)), dz = depth / N, Q = 4 * N;
+  const hS = rhoS / 2, hE = rhoE / 2;
+  const COS = [1, 0, -1, 0], SIN = [0, 1, 0, -1];
+
+  // spiral points every 90 degrees (absolute coordinates, so no rounding drift)
+  const pts = [];
+  for (let i = 0; i <= Q; i++) {
+    const t = i / Q, r = rhoS - (rhoS - rhoE) * t;
+    pts.push({ r, x: cx + r * COS[i % 4], y: cy + r * SIN[i % 4], z: zS + (zE - zS) * t });
+  }
+
+  const main = [], ix = {};
+  const add = (t, k) => { main.push(t); if (k) ix[k] = main.length - 1; };
+  add('O1000 (BORE CHAMFER - CORNER RADIUS ENDMILL)');
+  add(`(BORE D=${p.bore} TOOL D=${p.tool} R=${p.rc} DEPTH=${depth} ANGLE=${p.ang} DOC=${f(dz)})`);
+  add(`(CHAMFER WIDTH=${f(c)} TIP ORBIT R ${f(rhoS)} TO ${f(rhoE)} TIP Z ${f(zS)} TO ${f(zE)})`);
+  add('G21 G90 G40 G80'); add(`T01 M06 (D${p.tool} R${p.rc} ENDMILL)`); add(`G54 G00 X${f(cx)} Y${f(cy)} S${rpm} M03`, 'home');
+  add('G43 H01 Z50.0 M08', 'z50'); add('Z2.0', 'z2'); add(`G01 Z${f(zS)} F${f(feed / 2)}`, 'plunge');
+  add('(LEAD-IN ARC)'); add(`G01 X${f(cx + hS)} Y${f(cy - hS)} F${feed}`, 'li1'); add(`G03 X${f(cx + rhoS)} Y${f(cy)} I0.0 J${f(hS)}`, 'li2');
+  add(`(SPIRAL DOWN - ${N} REV X Z-${f(dz)})`); add('M98 P2000');
+  add('(FLAT FINISH CIRCLE AT FULL DEPTH)'); add(`G03 X${f(cx + rhoE)} Y${f(cy)} I-${f(rhoE)} J0.0`, 'circle');
+  add('(LEAD-OUT ARC)'); add(`G03 X${f(cx + hE)} Y${f(cy + hE)} I-${f(hE)} J0.0`, 'lo'); add(`G01 X${f(cx)} Y${f(cy)}`, 'back');
+  add('G00 Z50.0 M09', 'up'); add('M30');
+
+  const sub = [`O2000 (SPIRAL DOWN - ${N} REV - TIP ORBIT R ${f(rhoS)} TO ${f(rhoE)})`, 'G90'];
+  for (let i = 1; i <= Q; i++) sub.push(`G03 X${f(pts[i].x)} Y${f(pts[i].y)} Z${f(pts[i].z)} R${f((pts[i - 1].r + pts[i].r) / 2)}`);
+  sub.push('M99');
+
+  const M = []; let cur = { x: 0, y: 0, z: 100 };
+  const mv = (prog, line, type, to, arc) => {
+    const from = { ...cur }, t = { ...cur, ...to };
+    const len = type === 'A' ? Math.hypot((arc.r0 + arc.r1) / 2 * Math.abs(arc.sweep), t.z - from.z, arc.r1 - arc.r0) : Math.hypot(t.x - from.x, t.y - from.y, t.z - from.z);
+    M.push({ type, prog, line, from, to: t, len, arc, feed: type === 'R' ? RAPID : (prog === 'main' && line === ix.plunge ? feed / 2 : feed) }); cur = t;
+  };
+  const arc = (cxA, r0, r1, a0, sweep) => ({ cx: cxA, cy, r0, r1, a0, sweep });
+  mv('main', ix.home, 'R', { x: cx, y: cy }); mv('main', ix.z50, 'R', { z: 50 }); mv('main', ix.z2, 'R', { z: 2 });
+  mv('main', ix.plunge, 'F', { z: zS });
+  mv('main', ix.li1, 'F', { x: cx + hS, y: cy - hS });
+  mv('main', ix.li2, 'A', { x: cx + rhoS, y: cy }, arc(cx + hS, hS, hS, -P2, P2));
+  for (let i = 1; i <= Q; i++) mv('sub', 1 + i, 'A', { x: pts[i].x, y: pts[i].y, z: pts[i].z }, arc(cx, pts[i - 1].r, pts[i].r, (i - 1) * P2, P2));
+  mv('main', ix.circle, 'A', { x: cx + rhoE, y: cy }, arc(cx, rhoE, rhoE, 0, 2 * Math.PI));
+  mv('main', ix.lo, 'A', { x: cx + hE, y: cy + hE }, arc(cx + hE, hE, hE, 0, P2));
+  mv('main', ix.back, 'F', { x: cx, y: cy }); mv('main', ix.up, 'R', { z: 50 });
+
+  let tt = 0;
+  M.forEach(s => { s.t0 = tt; tt += s.len / s.feed * 60; s.t1 = tt; });
+
+  const half = Math.max(R + c, rhoS + p.tool / 2) + 8;
+  S = { ...p, R, ta, c, rhoS, rhoE, ix, D2: p.tool / 2, half, sc: 440 / (2 * half), H: new Float32Array(G * G), angle: 0,
+        moves: M, lines: { main, sub }, total: tt, rpm, speed: +document.querySelector('#speeds .on').dataset.s, spin: 0, last: 0, dragT: 0 };
+  [['mainBox', main], ['subBox', sub]].forEach(([id, ls]) => {
+    const b = $(id); b.innerHTML = '';
+    ls.forEach(l => { const d = document.createElement('div'); d.className = 'ln'; d.textContent = l; b.appendChild(d); });
+  });
+  const s = dz / Math.cos(Math.atan(ta)), step = p.rc - Math.sqrt(Math.max(0, p.rc * p.rc - (s / 2) * (s / 2)));
+  $('info').innerHTML = `Chamfer ${f(depth)} deep x ${f(c)} wide at ${p.ang}&deg; with D${p.tool} R${p.rc} endmill.<br>${N} revolutions (${Q} arcs), Z-${f(dz)} per rev; tool tip orbit radius ${f(rhoS)} &rarr; ${f(rhoE)}, tip Z ${f(zS)} &rarr; ${f(zE)}.<br>Estimated step mark on the chamfer: ${step.toFixed(4)} mm.<br>Each revolution is different (radius shrinks as Z drops), so the sub program lists every arc instead of repeating one block.`;
+  $('tTot').textContent = fmt(tt);
+  restartSim();
+  raf = requestAnimationFrame(frame);
+}
+
+/* ---------- simulation core ---------- */
+function newStock() {
+  const c = document.createElement('canvas'); c.width = c.height = 440;
+  const g = c.getContext('2d');
+  g.fillStyle = '#d6d6d6'; g.fillRect(0, 0, 440, 440);
+  g.fillStyle = '#f7f7f7'; g.beginPath(); g.arc(220, 220, S.R * S.sc, 0, 7); g.fill();
+  S.stock = c; S.sctx = g; S.H.fill(0); S.angle = 0;
+}
+
+const lerp = (a, b, k) => a + (b - a) * k;
+function pos(s, k) {
+  if (s.type === 'A') { const a = s.arc.a0 + s.arc.sweep * k, r = lerp(s.arc.r0, s.arc.r1, k); return { x: s.arc.cx + r * Math.cos(a), y: s.arc.cy + r * Math.sin(a), z: lerp(s.from.z, s.to.z, k) }; }
+  return { x: lerp(s.from.x, s.to.x, k), y: lerp(s.from.y, s.to.y, k), z: lerp(s.from.z, s.to.z, k) };
+}
+
+// tool underside height above the tip at distance rt from the axis (flat bottom + corner radius)
+const toolH = (rt, fl, rc) => rt <= fl ? 0 : rc - Math.sqrt(Math.max(0, rc * rc - (rt - fl) * (rt - fl)));
+
+function cut(x, y, zt) {
+  const { cx, cy, half, R, D2, rc, depth } = S, cw = 2 * half / G, cp = 440 / G, fl = D2 - rc, dep = -zt;
+  if (dep <= 0) return;
+  const rb = dep >= rc ? D2 : fl + Math.sqrt(Math.max(0, rc * rc - (rc - dep) * (rc - dep)));
+  const i0 = v => Math.max(0, Math.floor((v - (cx - half)) / cw)), i1 = v => Math.min(G - 1, Math.ceil((v - (cx - half)) / cw));
+  const j0 = Math.max(0, Math.floor((y - rb - (cy - half)) / cw)), j1 = Math.min(G - 1, Math.ceil((y + rb - (cy - half)) / cw));
+  for (let gy = j0; gy <= j1; gy++) {
+    const wy = cy - half + (gy + .5) * cw;
+    for (let gx = i0(x - rb); gx <= i1(x + rb); gx++) {
+      const wx = cx - half + (gx + .5) * cw, rt = Math.hypot(wx - x, wy - y);
+      if (rt > rb || Math.hypot(wx - cx, wy - cy) < R) continue;
+      const dd = -(zt + toolH(rt, fl, rc)), i = gy * G + gx;
+      if (dd > 0 && dd > S.H[i]) {
+        S.H[i] = dd;
+        S.sctx.fillStyle = `hsl(0,0%,${84 - 52 * Math.min(1, dd / depth)}%)`;
+        S.sctx.fillRect(gx * cp, (G - 1 - gy) * cp, cp, cp);
+      }
+    }
+  }
+}
+
+function applySeg(s, k0, k1) {
+  if (s.type === 'R' || k1 <= k0) return;
+  const step = Math.max(Math.min(S.tool, 12) / 25, .12), n = Math.max(1, Math.ceil(s.len * (k1 - k0) / step));
+  for (let i = 1; i <= n; i++) { const q = pos(s, lerp(k0, k1, i / n)); if (q.z < 0) cut(q.x, q.y, q.z); }
+}
+
+function advance(t) {
+  const M = S.moves;
+  while (S.ptr < M.length && M[S.ptr].t1 <= t) { applySeg(M[S.ptr], S.frac, 1); S.ptr++; S.frac = 0; }
+  if (S.ptr < M.length) {
+    const m = M[S.ptr], k = m.t1 > m.t0 ? (t - m.t0) / (m.t1 - m.t0) : 1;
+    applySeg(m, S.frac, k); S.frac = k;
+  }
+}
+
+function frame(ts) {
+  if (!S) return;
+  const dt = S.last ? Math.min((ts - S.last) / 1000, .1) : 0; S.last = ts;
+  if (S.playing) {
+    S.simT = Math.min(S.total, S.simT + dt * S.speed);
+    advance(S.simT); S.spin += dt * 14;
+    if (S.simT >= S.total) { S.playing = false; $('btnPlay').textContent = 'Replay'; }
+  }
+  render();
+  raf = requestAnimationFrame(frame);
+}
+
+function render() {
+  const { sc, half, cx, cy, R, c, rhoS, rhoE, D2, rc, depth, moves, ptr } = S;
+  const done = ptr >= moves.length;
+  const m = done ? moves[moves.length - 1] : moves[ptr];
+  const q = done ? m.to : pos(m, S.frac);
+  const cutting = q.z < 0 && m.type !== 'R' && !done;
+  const X = x => 220 + (x - cx) * sc, Y = y => 220 - (y - cy) * sc;
+  const orb = Math.hypot(q.x - cx, q.y - cy);
+  if (orb > .3) S.angle = Math.atan2(q.y - cy, q.x - cx);
+
+  /* top view */
+  const g = $('topCanvas').getContext('2d');
+  g.clearRect(0, 0, 440, 440);
+  g.drawImage(S.stock, 0, 0);
+  g.strokeStyle = '#161616'; g.lineWidth = 1.5; g.beginPath(); g.arc(220, 220, R * sc, 0, 7); g.stroke();
+  g.lineWidth = 1; g.setLineDash([4, 4]); g.strokeStyle = 'rgba(0,0,0,.35)';
+  g.beginPath(); g.arc(220, 220, (R + c) * sc, 0, 7); g.stroke();
+  g.strokeStyle = 'rgba(0,0,0,.18)';
+  g.beginPath(); g.arc(220, 220, rhoS * sc, 0, 7); g.moveTo(220 + rhoE * sc, 220); g.arc(220, 220, rhoE * sc, 0, 7); g.stroke(); g.setLineDash([]);
+  const tx = X(q.x), ty = Y(q.y);
+  g.fillStyle = cutting ? 'rgba(0,0,0,.2)' : 'rgba(0,0,0,.06)'; g.strokeStyle = '#161616';
+  g.beginPath(); g.arc(tx, ty, D2 * sc, 0, 7); g.fill(); g.stroke();
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.beginPath(); g.arc(tx, ty, Math.max((D2 - rc) * sc, 1), 0, 7); g.stroke();
+  g.strokeStyle = '#161616'; g.beginPath();
+  for (let k = 0; k < 4; k++) { const a = S.spin + k * Math.PI / 2; g.moveTo(tx, ty); g.lineTo(tx + Math.cos(a) * D2 * sc, ty + Math.sin(a) * D2 * sc); }
+  g.stroke();
+  g.fillStyle = '#7a7a7a'; g.font = '12px sans-serif'; g.fillText(`TOP   BORE ${S.bore}   CHAMFER ${f(c)} x ${f(depth)}`, 10, 20);
+
+  /* radial section at the tool angle (true scale) */
+  const s2 = $('sideCanvas').getContext('2d'), W = 440, Hh = 230;
+  const rmin = rhoE - D2 - 2, rmax = R + c + 5, T = depth * 2 + 4, y0 = 85;
+  const s = Math.min(W / (rmax - rmin), (Hh - y0 - 6) / T), SX = r => (r - rmin) * s, SZ = z => y0 - z * s;
+  s2.clearRect(0, 0, W, Hh);
+  const ca = Math.cos(S.angle), sa = Math.sin(S.angle), cw = 2 * half / G;
+  s2.fillStyle = '#d6d6d6';
+  for (let i = 0; i < W; i += 2) {
+    const r = rmin + (i + 1) / s; if (r < R) continue;
+    const gx = Math.floor((cx + r * ca - (cx - half)) / cw), gy = Math.floor((cy + r * sa - (cy - half)) / cw);
+    const dd = gx >= 0 && gx < G && gy >= 0 && gy < G ? S.H[gy * G + gx] : 0;
+    s2.fillRect(i, SZ(-dd), 2, (T - dd) * s);
+  }
+  s2.strokeStyle = '#161616'; s2.lineWidth = 1; s2.setLineDash([4, 3]);
+  s2.beginPath(); s2.moveTo(SX(R), SZ(-depth)); s2.lineTo(SX(R + c), SZ(0)); s2.stroke(); s2.setLineDash([]);
+  const x0 = SX(orb), tipY = SZ(Math.min(q.z, 12)), fl = (D2 - rc) * s, rr = rc * s;
+  s2.fillStyle = cutting ? '#161616' : '#5a5a5a'; s2.beginPath();
+  s2.moveTo(x0 - fl, tipY); s2.lineTo(x0 + fl, tipY);
+  s2.arc(x0 + fl, tipY - rr, rr, Math.PI / 2, 0, true);
+  s2.lineTo(x0 + D2 * s, tipY - rr - 70); s2.lineTo(x0 - D2 * s, tipY - rr - 70); s2.lineTo(x0 - D2 * s, tipY - rr);
+  s2.arc(x0 - fl, tipY - rr, rr, Math.PI, Math.PI / 2, true);
+  s2.closePath(); s2.fill();
+  s2.fillStyle = '#7a7a7a'; s2.font = '12px sans-serif'; s2.fillText('SECTION  (radial, at tool angle, true scale)', 10, 20);
+
+  /* readouts */
+  $('dX').textContent = q.x.toFixed(3); $('dY').textContent = q.y.toFixed(3); $('dZ').textContent = q.z.toFixed(3);
+  $('dMode').textContent = done ? 'DONE' : m.type === 'R' ? 'RAPID' : m.type === 'A' ? (m.prog === 'sub' ? 'SPIRAL' : 'G03 ARC') : (m.prog === 'main' && m.line === S.ix.plunge ? 'PLUNGE' : 'G01');
+  $('dProg').textContent = m.prog === 'sub' ? 'O2000' : 'O1000';
+  $('dOrb').textContent = orb.toFixed(3);
+  $('dF').textContent = done || m.type === 'R' ? 'G00' : Math.round(m.feed);
+  $('dMove').textContent = Math.min(ptr + 1, moves.length) + '/' + moves.length;
+  $('dS').textContent = done ? 0 : S.rpm;
+  const pct = Math.round(S.simT / S.total * 100);
+  $('tNow').textContent = fmt(S.simT); $('tPct').textContent = pct + '%';
+  if (performance.now() - S.dragT > 400) $('seek').value = S.simT / S.total * 1000;
+
+  const key = m.prog + m.line;
+  if (key !== S.lastKey) {
+    if (S.lastEl) S.lastEl.classList.remove('on');
+    const box = $(m.prog === 'sub' ? 'subBox' : 'mainBox'), el = box.children[m.line];
+    el.classList.add('on'); S.lastEl = el; S.lastKey = key;
+    $('curBlock').textContent = S.lines[m.prog][m.line];
+    if ($('tab-code').style.display !== 'none') box.scrollTop = el.offsetTop - box.clientHeight / 2;
+  }
+}
+
+const fmt = s => { s = Math.round(s); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+
+/* ---------- controls ---------- */
+function resetTo(t) { newStock(); S.ptr = 0; S.frac = 0; S.simT = 0; advance(t); S.simT = t; }
+function restartSim() { if (!S) return; resetTo(0); S.playing = true; $('btnPlay').textContent = 'Pause'; }
+function endSim() { if (!S) return; resetTo(S.total); S.playing = false; $('btnPlay').textContent = 'Replay'; }
+function seekTo(v) { if (!S) return; S.dragT = performance.now(); resetTo(v / 1000 * S.total); }
+function togglePlay() {
+  if (!S) return;
+  if (S.simT >= S.total) { restartSim(); return; }
+  S.playing = !S.playing; $('btnPlay').textContent = S.playing ? 'Pause' : 'Play';
+}
+function setSpeed(btn) {
+  document.querySelectorAll('#speeds button').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on'); if (S) S.speed = +btn.dataset.s;
+}
+function switchTab(n) {
+  ['sim', 'code'].forEach(k => {
+    $('tab-' + k).style.display = k === n ? 'block' : 'none';
+    $('tb-' + k).classList.toggle('active', k === n);
+  });
+}
+function copyCode(which, btn) {
+  if (!S) return;
+  navigator.clipboard.writeText(S.lines[which].join('\n')).then(() => {
+    const o = btn.textContent; btn.textContent = 'Copied'; setTimeout(() => btn.textContent = o, 1500);
+  }).catch(() => alert('Copy failed'));
+}
+</script>
+</body>
+</html>
